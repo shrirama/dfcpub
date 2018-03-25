@@ -929,6 +929,7 @@ add:
 	if glog.V(3) {
 		glog.Infof("register target %s (count %d)", nsi.DaemonID, ctx.smap.count())
 	}
+
 	go p.synchronizeMaps(0, "")
 }
 
@@ -958,6 +959,7 @@ func (p *proxyrunner) httpcludel(w http.ResponseWriter, r *http.Request) {
 	if glog.V(3) {
 		glog.Infof("Unregistered target {%s} (count %d)", sid, ctx.smap.count())
 	}
+
 	go p.synchronizeMaps(0, "")
 }
 
@@ -1030,31 +1032,20 @@ func (p *proxyrunner) synchronizeMaps(ntargets int, action string) {
 		return
 	}
 	defer atomic.CompareAndSwapInt64(&p.syncmapinp, aval, 0)
-	if startingUp {
-		time.Sleep(syncmapsdelay)
-	}
-	ctx.smap.lock()
-	p.lbmap.lock()
-	lbversion := p.lbmap.version()
-	smapversion := ctx.smap.version()
-	delay := syncmapsdelay
-	if lbversion == p.lbmap.syncversion && smapversion == ctx.smap.syncversion {
-		glog.Infof("Smap (v%d) and lbmap (v%d) are already in sync with the targets",
-			smapversion, lbversion)
-		p.lbmap.unlock()
-		ctx.smap.unlock()
-		return
-	}
-	p.lbmap.unlock()
-	ctx.smap.unlock()
-	time.Sleep(time.Second)
+
+	var (
+		lbversion   int64
+		smapversion int64
+	)
+
 	for {
+		time.Sleep(syncmapsdelay)
 		lbv := p.lbmap.versionLocked()
 		if lbversion != lbv {
 			lbversion = lbv
-			time.Sleep(delay)
 			continue
 		}
+
 		smv := ctx.smap.versionLocked()
 		if smapversion != smv {
 			smapversion = smv
@@ -1067,14 +1058,14 @@ func (p *proxyrunner) synchronizeMaps(ntargets int, action string) {
 					glog.Flush()
 				}
 			} else {
-				time.Sleep(delay)
 				continue
 			}
 		}
+
 		// finally:
 		// change in the cluster map warrants the broadcast of every other config that
 		// must be shared across the cluster;
-		// the opposite it not true though, that's why the check below
+		// the opposite is not true though, that's why the check below
 		p.httpfilputLB()
 		if action == Rebalance {
 			p.httpcluputSmap(Rebalance, false) // REST cmd
@@ -1085,8 +1076,10 @@ func (p *proxyrunner) synchronizeMaps(ntargets int, action string) {
 				p.httpcluputSmap(Rebalance, true)
 			}
 		}
+
 		break
 	}
+
 	ctx.smap.lock()
 	p.lbmap.lock()
 	ctx.smap.syncversion = smapversion
