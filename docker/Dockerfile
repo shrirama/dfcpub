@@ -14,6 +14,8 @@ RUN set -eux &&\
   apt-get --no-install-recommends -y install vim &&\
   apt-get --no-install-recommends -y install python &&\
   apt-get --no-install-recommends -y install sysstat &&\
+  apt-get --no-install-recommends -y install fio &&\
+  apt-get --no-install-recommends -y install nload &&\
   apt-get -y clean all
 RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 RUN curl -LO  https://storage.googleapis.com/golang/go$GOLANG_VERSION.linux-amd64.tar.gz
@@ -42,6 +44,9 @@ RUN apt-get -y install collectd collectd-utils
 COPY collectd.conf /etc/collectd
 
 WORKDIR $WORKDIR
+RUN git config --global user.email shrirama@nvidia.com
+RUN git config --global user.name  shri 
+RUN git pull origin shri-pkgdock
 RUN echo "\
 service collectd start \n \
 node $STATSD_PATH/stats.js $STATSD_PATH/$STATSD_CONF& \n \
