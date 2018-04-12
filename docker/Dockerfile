@@ -21,7 +21,6 @@ RUN set -eux &&\
   apt-get --no-install-recommends -y install linux-tools-4.4.0-1054-aws  &&\
   apt-get --no-install-recommends -y install linux-cloud-tools-4.4.0-1054-aws  &&\
   apt-get --no-install-recommends -y install linux-tools-aws  &&\
-  apt-get --no-install-recommends -y install linux-cloud-tools-aws  &&\
   apt-get -y clean all
 RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 RUN curl -LO  https://storage.googleapis.com/golang/go$GOLANG_VERSION.linux-amd64.tar.gz
