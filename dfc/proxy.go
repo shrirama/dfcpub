@@ -881,7 +881,17 @@ func (p *proxyrunner) synclbmap(w http.ResponseWriter, r *http.Request) {
 		p.invalmsghdlr(w, r, s)
 		return
 	}
+	go p.synchronizeMaps(0, "")
+}
 
+// syncsmap requires the caller to lock p.smap
+func (p *proxyrunner) syncsmap(w http.ResponseWriter, r *http.Request) {
+	smappathname := p.confdir + "/" + smapname
+	if err := localSave(smappathname, p.smap); err != nil {
+		s := fmt.Sprintf("Failed to store smap %s, err : %v", smappathname, err)
+		p.invalmsghdlr(w, r, s)
+		return
+	}
 	go p.synchronizeMaps(0, "")
 }
 
@@ -1309,7 +1319,9 @@ func (p *proxyrunner) httpclupost(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p.registertarget(nsi, keepalive)
 	}
-	go p.synchronizeMaps(0, "")
+	p.smap.Lock()
+	defer p.smap.Unlock()
+	p.syncsmap(w, r)
 }
 
 func (p *proxyrunner) shouldAddToSmap(nsi *daemonInfo, osi *daemonInfo, keepalive bool, kind string) bool {
@@ -1391,14 +1403,13 @@ func (p *proxyrunner) httpcludel(w http.ResponseWriter, r *http.Request) {
 		sid = apitems[2]
 	}
 	p.smap.lock()
+	defer p.smap.Unlock()
 	if !proxy && p.smap.get(sid) == nil {
 		glog.Errorf("Unknown target %s", sid)
-		p.smap.unlock()
 		return
 	}
 	if proxy && p.smap.getProxy(sid) == nil {
 		glog.Errorf("Unknown proxy %s", sid)
-		p.smap.unlock()
 		return
 	}
 	if proxy {
@@ -1406,7 +1417,6 @@ func (p *proxyrunner) httpcludel(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p.smap.del(sid)
 	}
-	p.smap.unlock()
 	//
 	// TODO: startup -- leave --
 	//
@@ -1417,7 +1427,7 @@ func (p *proxyrunner) httpcludel(w http.ResponseWriter, r *http.Request) {
 			glog.Infof("Unregistered target {%s} (count %d)", sid, p.smap.count())
 		}
 	}
-	go p.synchronizeMaps(0, "")
+	p.syncsmap(w, r)
 }
 
 // '{"action": "shutdown"}' /v1/cluster => (proxy) =>
