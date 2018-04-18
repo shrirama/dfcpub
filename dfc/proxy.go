@@ -74,6 +74,10 @@ func secure(h http.HandlerFunc, wraps ...func(http.HandlerFunc) http.HandlerFunc
 // Not authorized
 // $ curl -L -uadmin:admin http://localhost:8080/v1/buckets/*
 // {"cloud":["alxa","brnf","ldi","nvdfc","shri-new","shri-test","shriag","vlam"],"local":["dfclocal","vlocal"]}
+// $ curl -L -H 'Token: passme'  http://localhost:8080/v1/buckets/*
+// {"cloud":["alxa","brnf","ldi","nvdfc","shri-new","shri-test","shriag","vlam"],"local":["dfclocal","vlocal"]}
+//
+// Opening url http://localhost:8080/v1/buckets/* in browser makes browser ask a user to log in
 //
 // Sources:
 // https://gist.github.com/elithrar/9146306
@@ -82,6 +86,13 @@ func secure(h http.HandlerFunc, wraps ...func(http.HandlerFunc) http.HandlerFunc
 func (p *proxyrunner) basicAuth(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="DFC"`)
+
+		token := r.Header.Get("Token")
+		if token == "passme" {
+			h.ServeHTTP(w, r)
+			return
+		}
+
 		s := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
 		if len(s) != 2 {
 			http.Error(w, "Not authorized", 401)
