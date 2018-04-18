@@ -7,6 +7,7 @@ package dfc
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -58,6 +59,54 @@ type proxyrunner struct {
 	lbmap       *lbmap
 	syncmapinp  int64
 	primary     bool
+}
+
+func secure(h http.HandlerFunc, wraps ...func(http.HandlerFunc) http.HandlerFunc) http.HandlerFunc {
+	for _, w := range wraps {
+		h = w(h)
+	}
+
+	return h
+}
+
+// With basic auth:
+// $ curl -L http://localhost:8080/v1/buckets/*
+// Not authorized
+// $ curl -L -uadmin:admin http://localhost:8080/v1/buckets/*
+// {"cloud":["alxa","brnf","ldi","nvdfc","shri-new","shri-test","shriag","vlam"],"local":["dfclocal","vlocal"]}
+//
+// Sources:
+// https://gist.github.com/elithrar/9146306
+// https://play.golang.org/p/IbzYPFwsoo
+// https://stackoverflow.com/questions/21936332/idiomatic-way-of-requiring-http-basic-auth-in-go
+func (p *proxyrunner) basicAuth(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="DFC"`)
+		s := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
+		if len(s) != 2 {
+			http.Error(w, "Not authorized", 401)
+			return
+		}
+
+		b, err := base64.StdEncoding.DecodeString(s[1])
+		if err != nil {
+			http.Error(w, err.Error(), 401)
+			return
+		}
+
+		pair := strings.SplitN(string(b), ":", 2)
+		if len(pair) != 2 {
+			http.Error(w, "Not authorized", 401)
+			return
+		}
+
+		if pair[0] != "admin" || pair[1] != "admin" {
+			http.Error(w, "Not authorized", 401)
+			return
+		}
+
+		h.ServeHTTP(w, r)
+	}
 }
 
 // start proxy runner
@@ -121,7 +170,8 @@ func (p *proxyrunner) run() error {
 	//
 	// REST API: register proxy handlers and start listening
 	//
-	p.httprunner.registerhdlr("/"+Rversion+"/"+Rbuckets+"/", p.buckethdlr)
+	// p.httprunner.registerhdlr("/"+Rversion+"/"+Rbuckets+"/", p.buckethdlr)
+	p.httprunner.registerhdlr("/"+Rversion+"/"+Rbuckets+"/", secure(p.buckethdlr, p.basicAuth))
 	p.httprunner.registerhdlr("/"+Rversion+"/"+Robjects+"/", p.objecthdlr)
 	p.httprunner.registerhdlr("/"+Rversion+"/"+Rdaemon, p.daemonhdlr)
 	p.httprunner.registerhdlr("/"+Rversion+"/"+Rdaemon+"/", p.daemonhdlr) // FIXME
