@@ -58,6 +58,7 @@ type proxyrunner struct {
 	confdir     string
 	xactinp     *xactInProgress
 	lbmap       *lbmap
+	hintsmap    *Smap
 	syncmapinp  int64
 	primary     bool
 }
@@ -106,6 +107,11 @@ func (p *proxyrunner) run() error {
 		}
 		p.primary = false
 	} else {
+		smappathname := p.confdir + "/" + smapname
+		if err := localLoad(smappathname, p.hintsmap); !os.IsNotExist(err) {
+			glog.Warningf("Failed to load existing hint smap: %v", err)
+		}
+		// create empty
 		p.smap.Smap = make(map[string]*daemonInfo, 8)
 		p.smap.Pmap = make(map[string]*proxyInfo, 8)
 		p.smap.addProxy(&proxyInfo{

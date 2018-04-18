@@ -390,7 +390,9 @@ func mismatchclustermap(getnumtargets func(int) int, t *testing.T) {
 	// Check if the next proxy is the one we found from hrw
 	proxyurl = nextProxyURL
 	smap = getClusterMap(httpclient, t)
-	if smap.ProxySI.DaemonID != nextProxyID {
+	if smap.ProxySI == nil {
+		t.Errorf("Nil ProxySI in retrieved cluster map.")
+	} else if smap.ProxySI.DaemonID != nextProxyID {
 		t.Errorf("Incorrect Primary Proxy: %v, should be: %v", smap.ProxySI.DaemonID, nextProxyID)
 	}
 
