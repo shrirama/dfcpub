@@ -560,7 +560,7 @@ func Test_coldgetmd5(t *testing.T) {
 	}
 
 	config := getConfig(proxyurl+"/"+dfc.Rversion+"/"+dfc.Rdaemon, httpclient, t)
-	cksumconfig := config["cksum_config"].(map[string]interface{})
+	cksumconfig := config["cksum"].(map[string]interface{})
 	bcoldget := cksumconfig["validate_cold_get"].(bool)
 
 	if usingSG {
@@ -860,7 +860,7 @@ func Test_checksum(t *testing.T) {
 
 	// Get Current Config
 	config := getConfig(proxyurl+"/"+dfc.Rversion+"/"+dfc.Rdaemon, httpclient, t)
-	cksumconfig := config["cksum_config"].(map[string]interface{})
+	cksumconfig := config["cksum"].(map[string]interface{})
 	ocoldget := cksumconfig["validate_cold_get"].(bool)
 	ochksum := cksumconfig["checksum"].(string)
 	if ochksum == dfc.ChecksumXXHash {

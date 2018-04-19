@@ -403,8 +403,8 @@ func propsMainTest(t *testing.T, versioning string) {
 		rbdelay       = "1s" // default startup_delay_time is 10m
 	)
 	config := getConfig(proxyurl+"/"+dfc.Rversion+"/"+dfc.Rdaemon, httpclient, t)
-	versionCfg := config["version_config"].(map[string]interface{})
-	rebalanceCfg := config["rebalance_conf"].(map[string]interface{})
+	versionCfg := config["version"].(map[string]interface{})
+	rebalanceCfg := config["rebalance"].(map[string]interface{})
 	oldChkVersion := versionCfg["validate_warm_get"].(bool)
 	oldVersioning := versionCfg["versioning"].(string)
 	oldRBDelay := rebalanceCfg["startup_delay_time"].(string)

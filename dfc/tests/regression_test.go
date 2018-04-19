@@ -198,9 +198,9 @@ func regressionStats(t *testing.T) {
 
 func regressionConfig(t *testing.T) {
 	oconfig := getConfig(proxyurl+"/"+dfc.Rversion+"/"+dfc.Rdaemon, httpclient, t)
-	olruconfig := oconfig["lru_config"].(map[string]interface{})
-	orebconfig := oconfig["rebalance_conf"].(map[string]interface{})
-	oproxyconfig := oconfig["proxyconfig"].(map[string]interface{})
+	olruconfig := oconfig["lru"].(map[string]interface{})
+	orebconfig := oconfig["rebalance"].(map[string]interface{})
+	oproxyconfig := oconfig["proxy"].(map[string]interface{})
 	oprimary := oproxyconfig["primary"].(map[string]interface{})
 	operiodic := oconfig["periodic"].(map[string]interface{})
 
@@ -209,9 +209,9 @@ func regressionConfig(t *testing.T) {
 	}
 
 	nconfig := getConfig(proxyurl+"/"+dfc.Rversion+"/"+dfc.Rdaemon, httpclient, t)
-	nlruconfig := nconfig["lru_config"].(map[string]interface{})
-	nrebconfig := nconfig["rebalance_conf"].(map[string]interface{})
-	nproxyconfig := nconfig["proxyconfig"].(map[string]interface{})
+	nlruconfig := nconfig["lru"].(map[string]interface{})
+	nrebconfig := nconfig["rebalance"].(map[string]interface{})
+	nproxyconfig := nconfig["proxy"].(map[string]interface{})
 	nprimary := nproxyconfig["primary"].(map[string]interface{})
 	nperiodic := nconfig["periodic"].(map[string]interface{})
 
@@ -301,7 +301,7 @@ func regressionLRU(t *testing.T) {
 	filesEvictedOrig := make(map[string]int64)
 	for k, di := range smap.Smap {
 		cfg := getConfig(di.DirectURL+RestAPIDaemonSuffix, httpclient, t)
-		lrucfg := cfg["lru_config"].(map[string]interface{})
+		lrucfg := cfg["lru"].(map[string]interface{})
 		lwms[k] = lrucfg["lowwm"]
 		hwms[k] = lrucfg["highwm"]
 	}
@@ -335,7 +335,7 @@ func regressionLRU(t *testing.T) {
 	//
 	// all targets: set new watermarks; restore upon exit
 	//
-	olruconfig := oconfig["lru_config"].(map[string]interface{})
+	olruconfig := oconfig["lru"].(map[string]interface{})
 	operiodic := oconfig["periodic"].(map[string]interface{})
 	defer func() {
 		setConfig("dont_evict_time", olruconfig["dont_evict_time"].(string), proxyurl+"/"+dfc.Rversion+"/"+dfc.Rcluster, httpclient, t)
@@ -419,7 +419,7 @@ func regressionRebalance(t *testing.T) {
 	// step 1. config
 	//
 	oconfig := getConfig(proxyurl+"/"+dfc.Rversion+"/"+dfc.Rdaemon, httpclient, t)
-	orebconfig := oconfig["rebalance_conf"].(map[string]interface{})
+	orebconfig := oconfig["rebalance"].(map[string]interface{})
 	defer func() {
 		setConfig("startup_delay_time", orebconfig["startup_delay_time"].(string), proxyurl+"/"+dfc.Rversion+"/"+dfc.Rcluster, httpclient, t)
 	}()

@@ -62,14 +62,14 @@ type dfconfig struct {
 	Log          logconfig         `json:"log"`
 	Periodic     periodic          `json:"periodic"`
 	Timeout      timeoutconfig     `json:"timeout"`
-	Proxy        proxyconfig       `json:"proxyconfig"`
-	LRU          lruconfig         `json:"lru_config"`
-	Rebalance    rebalanceconf     `json:"rebalance_conf"`
-	Cksum        cksumconfig       `json:"cksum_config"`
-	Ver          versionconfig     `json:"version_config"`
+	Proxy        proxyconfig       `json:"proxy"`
+	LRU          lruconfig         `json:"lru"`
+	Rebalance    rebalanceconf     `json:"rebalance"`
+	Cksum        cksumconfig       `json:"cksum"`
+	Ver          versionconfig     `json:"version"`
 	FSpaths      map[string]string `json:"fspaths"`
 	TestFSP      testfspathconf    `json:"test_fspaths"`
-	Net          netconfig         `json:"netconfig"`
+	Net          netconfig         `json:"net"`
 	FSKeeper     fskeeperconf      `json:"fskeeper"`
 	Experimental experimental      `json:"experimental"`
 	H2c          bool              `json:"h2c"`

@@ -21,7 +21,7 @@
 		"proxy_ping":		"100ms",
 		"vote_request":		"2s"
 	},
-	"proxyconfig": {
+	"proxy": {
 		"primary": {
 			"id":		"${PROXYID}",
 			"url": 		"${PROXYURL}",
@@ -33,7 +33,7 @@
 			"passthru": 	true
 		}
 	},
-	"lru_config": {
+	"lru": {
 		"lowwm":		75,
 		"highwm":		90,
 		"atime_cache_max":	65536,
@@ -41,15 +41,15 @@
 		"capacity_upd_time":	"10m",
 		"lru_enabled":  	true
 	},
-	"rebalance_conf": {
+	"rebalance": {
 		"startup_delay_time":	"10m",
 		"rebalancing_enabled": 	true
 	},
-	"cksum_config": {
-                 "checksum":		"xxhash",
-                 "validate_cold_get":	true
+	"cksum": {
+		"checksum":		"xxhash",
+		"validate_cold_get":	true
 	},
-	"version_config": {
+	"version": {
 		"validate_warm_get":	false,
 		"versioning":		"all"
 	},
@@ -61,7 +61,7 @@ $FSPATHS
 		"count":		$TESTFSPATHCOUNT,
 		"instance":		$c
 	},
-	"netconfig": {
+	"net": {
 		"ipv4": "$IPV4LIST",
 		"l4": {
 			"proto": 	"tcp",
