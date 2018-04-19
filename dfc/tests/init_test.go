@@ -49,6 +49,7 @@ var (
 	skipdel                bool
 	baseseed               = int64(1062984096)
 	keepaliveseconds       int64
+	startupsuspectseconds  int64
 	multiProxyTestDuration time.Duration
 	clichecksum            string
 	cycles                 int
@@ -83,6 +84,7 @@ func init() {
 	// choice of seed, so they will interfere with each other.
 	flag.Int64Var(&baseseed, "seed", baseseed, "Seed to use for random number generators")
 	flag.Int64Var(&keepaliveseconds, "keepaliveseconds", 15, "The keepalive poll time for the cluster")
+	flag.Int64Var(&startupsuspectseconds, "startupsuspectseconds", 30, "The Startup Suspect time for proxies")
 	flag.DurationVar(&multiProxyTestDuration, "duration", 10*time.Minute,
 		"The length to run the Multiple Proxy Stress Test for")
 	flag.StringVar(&clichecksum, "checksum", "all", "all | xxhash | coldmd5")

@@ -89,12 +89,11 @@ func (p *proxyrunner) run() error {
 		p.primary = false
 	} else {
 		// FIXME: This location is shared with all proxies/targets when running locally. See deploy.sh
-		smappathname := p.confdir + "/" + smapname
+		smappathname := filepath.Join(p.confdir, smapname)
 		p.hintsmap = &Smap{}
 		if err := localLoad(smappathname, p.hintsmap); err != nil && !os.IsNotExist(err) {
 			glog.Warningf("Failed to load existing hint smap: %v", err)
 		}
-		// create empty
 		p.smap.Smap = make(map[string]*daemonInfo, 8)
 		p.smap.Pmap = make(map[string]*proxyInfo, 8)
 		p.smap.addProxy(&proxyInfo{
@@ -103,6 +102,7 @@ func (p *proxyrunner) run() error {
 		})
 		p.primary = true
 
+		// suspectPrimaryStatus will wait a configurable duration, and then attempt to determine the correct current primary proxy
 		go p.suspectPrimaryStatus()
 	}
 	p.smap.ProxySI = &proxyInfo{daemonInfo: *p.si, Primary: p.primary}
@@ -142,7 +142,6 @@ func (p *proxyrunner) register(timeout time.Duration) (status int, err error) {
 }
 
 func (p *proxyrunner) registerWithURL(proxyurl string, timeout time.Duration) (status int, err error) {
-	//FIXME: merge with above method?
 	jsbytes, err := json.Marshal(p.si)
 	assert(err == nil)
 
@@ -214,7 +213,7 @@ func (p *proxyrunner) suspectPrimaryStatus() {
 		glog.Infof("Recieved Registrations; not suspect\n")
 		return // It has recieved registrations, so the suspicion is unfounded.
 	}
-	// The suspicion is correct: proxy must now attempt to get the cluster map
+	// Next, the proxy uses the persisted Smap from previous runs (p.hintsmap) to attempt to get the new cluster map.
 	msg := GetMsg{GetWhat: GetWhatSmap}
 	jsbytes, err := json.Marshal(msg)
 	assert(err == nil)
@@ -252,7 +251,7 @@ func (p *proxyrunner) suspectPrimaryStatus() {
 		smapLock.Lock()
 		p.smap = smap
 		smapLock.Unlock()
-		// Once registration has succeeded, stop the suspecting process
+		// Once registration has succeeded, the suspecting process is over.
 		glog.Infof("Registered with new primary; not suspect\n")
 		p.becomeNonPrimaryProxy()
 		p.setPrimaryProxy(smap.ProxySI.DaemonID, "" /* primaryToRemove */, false /* prepare */)
@@ -1178,8 +1177,9 @@ func (p *proxyrunner) httpdaeputSmap(w http.ResponseWriter, r *http.Request, api
 	}
 	existentialQ := (newsmap.getProxy(p.si.DaemonID) != nil)
 	assert(existentialQ)
-	p.smap.lock()
-	defer p.smap.unlock()
+
+	smapLock.Lock()
+	defer smapLock.Unlock()
 	p.smap, p.proxysi = newsmap, newsmap.ProxySI
 }
 

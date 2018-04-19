@@ -520,6 +520,7 @@ func (h *httprunner) voteOnProxy(candidate string) (bool, error) {
 // Sets the primary proxy to the proxy in the cluster map with the ID newPrimaryProxy.
 // Removes primaryToRemove from the cluster map, if primaryToRemove is provided.
 func (h *httprunner) setPrimaryProxy(newPrimaryProxy, primaryToRemove string, prepare bool) error {
+	glog.Infof("Set primary proxy: %v (prepare: %v)", newPrimaryProxy, prepare)
 	h.smap.lock()
 	defer h.smap.unlock()
 
