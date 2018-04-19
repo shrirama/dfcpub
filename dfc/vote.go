@@ -412,10 +412,14 @@ func (p *proxyrunner) updateSmapPrimaryProxy(proxyidToRemove string) *proxyInfo 
 
 func (p *proxyrunner) becomeNonPrimaryProxy() {
 	p.primary = false
-	p.smap.Lock()
-	defer p.smap.Unlock()
+	p.smap.lock()
+	defer p.smap.unlock()
 	psi := p.smap.getProxy(p.si.DaemonID)
-	psi.Primary = false
+	if psi != nil {
+		// FIXME: This shouldn't actually happen, but it does because of a shared config directory.
+		// Should this error be checked?
+		psi.Primary = false
+	}
 }
 
 func (p *proxyrunner) onPrimaryProxyFailure() {

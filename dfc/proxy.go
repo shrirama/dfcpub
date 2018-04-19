@@ -85,30 +85,13 @@ func (p *proxyrunner) run() error {
 	isproxy := os.Getenv("DFCPRIMARYPROXY")
 	// Register proxy if it isn't the Primary proxy
 	if isproxy == "" && ctx.config.Proxy.Primary.ID != p.si.DaemonID {
-		if ctx.config.Proxy.Primary.ID == "" {
-			glog.Infof("Proxy (%s) is not a primary proxy - registering...", p.si.DaemonID)
-		} else {
-			glog.Infof("Proxy (%s) is not a primary proxy - registering with %s (the primary)",
-				p.si.DaemonID, ctx.config.Proxy.Primary.ID)
-		}
-		if status, err := p.register(0); err != nil {
-			glog.Errorf("Proxy %s failed to register with primary proxy, err: %v", p.si.DaemonID, err)
-			if IsErrConnectionRefused(err) || status == http.StatusRequestTimeout {
-				glog.Errorf("Proxy %s: retrying registration...", p.si.DaemonID)
-				time.Sleep(time.Second * 3)
-				if _, err = p.register(0); err != nil {
-					glog.Errorf("Proxy %s failed to register with primary proxy, err: %v", p.si.DaemonID, err)
-					glog.Errorf("Proxy %s is terminating", p.si.DaemonID)
-					return err
-				}
-			} else {
-				return err
-			}
-		}
+		p.registerWithRetry(ctx.config.Proxy.Primary.URL, 0)
 		p.primary = false
 	} else {
+		// FIXME: This location is shared with all proxies/targets when running locally. See deploy.sh
 		smappathname := p.confdir + "/" + smapname
-		if err := localLoad(smappathname, p.hintsmap); !os.IsNotExist(err) {
+		p.hintsmap = &Smap{}
+		if err := localLoad(smappathname, p.hintsmap); err != nil && !os.IsNotExist(err) {
 			glog.Warningf("Failed to load existing hint smap: %v", err)
 		}
 		// create empty
@@ -119,6 +102,8 @@ func (p *proxyrunner) run() error {
 			Primary:    true,
 		})
 		p.primary = true
+
+		go p.suspectPrimaryStatus()
 	}
 	p.smap.ProxySI = &proxyInfo{daemonInfo: *p.si, Primary: p.primary}
 	// startup: sync local buckets and cluster map when the latter stabilizes
@@ -146,9 +131,6 @@ func (p *proxyrunner) run() error {
 }
 
 func (p *proxyrunner) register(timeout time.Duration) (status int, err error) {
-	jsbytes, err := json.Marshal(p.si)
-	assert(err == nil)
-
 	var url string
 	if p.proxysi.DaemonID != "" {
 		url = p.proxysi.DirectURL
@@ -156,7 +138,15 @@ func (p *proxyrunner) register(timeout time.Duration) (status int, err error) {
 		// Smap has not yet been synced
 		url = ctx.config.Proxy.Primary.URL
 	}
-	url += "/" + Rversion + "/" + Rcluster + "/" + Rproxy
+	return p.registerWithURL(url, timeout)
+}
+
+func (p *proxyrunner) registerWithURL(proxyurl string, timeout time.Duration) (status int, err error) {
+	//FIXME: merge with above method?
+	jsbytes, err := json.Marshal(p.si)
+	assert(err == nil)
+
+	url := proxyurl + "/" + Rversion + "/" + Rcluster + "/" + Rproxy
 	if timeout > 0 {
 		url += "/" + Rkeepalive
 		_, err, _, status = p.call(nil, url, http.MethodPost, jsbytes, timeout)
@@ -194,6 +184,83 @@ func (p *proxyrunner) stop(err error) {
 		p.unregister()
 	}
 	p.httprunner.stop(err)
+}
+
+func (p *proxyrunner) registerWithRetry(url string, timeout time.Duration) error {
+	if status, err := p.registerWithURL(url, timeout); err != nil {
+		glog.Errorf("Proxy %s failed to register with primary proxy, err: %v", p.si.DaemonID, err)
+		if IsErrConnectionRefused(err) || status == http.StatusRequestTimeout {
+			glog.Errorf("Proxy %s: retrying registration...", p.si.DaemonID)
+			time.Sleep(time.Second * 3)
+			if _, err = p.registerWithURL(url, timeout); err != nil {
+				glog.Errorf("Proxy %s failed to register with primary proxy, err: %v", p.si.DaemonID, err)
+				glog.Errorf("Proxy %s is terminating", p.si.DaemonID)
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *proxyrunner) suspectPrimaryStatus() {
+	// On startup, a proxy that begins as primary suspects itself for a configurable interval
+	<-time.After(ctx.config.Timeout.StartupSuspect)
+	glog.Infof("Suspect Timeout Ended\n")
+	// After that interval, if it has not recieved any registrations from any targets/proxies: it might not be the primary.
+	// If there is only 1 target/proxy, then that is this proxy.
+	if p.smap.count()+p.smap.countProxies() > 1 {
+		glog.Infof("Recieved Registrations; not suspect\n")
+		return // It has recieved registrations, so the suspicion is unfounded.
+	}
+	// The suspicion is correct: proxy must now attempt to get the cluster map
+	msg := GetMsg{GetWhat: GetWhatSmap}
+	jsbytes, err := json.Marshal(msg)
+	assert(err == nil)
+	for sid, si := range p.hintsmap.Pmap {
+		if sid == p.si.DaemonID {
+			continue
+		}
+		url := si.DirectURL + "/" + Rversion + "/" + Rcluster
+		method := http.MethodGet
+		// FIXME: Which timeout should be used? Should a generic "short" be added
+		// instead of using VoteRequest everywhere that needs a short timeout
+		r, err, _, _ := p.call(&si.daemonInfo, url, method, jsbytes, ctx.config.Timeout.VoteRequest)
+		if err != nil {
+			continue
+		}
+		smap := &Smap{}
+		if err = json.Unmarshal(r, smap); err != nil {
+			// FIXME: Error?
+			glog.Warningf("Error unmarshalling cluster map from %v: %v", si, smap)
+			continue
+		}
+
+		if smap.ProxySI.DaemonID == p.si.DaemonID {
+			// If this is the primary proxy, stop the suspecting process
+			glog.Infof("This is primary proxy; not suspect\n")
+			return
+		}
+
+		err = p.registerWithRetry(smap.ProxySI.DirectURL, ctx.config.Timeout.Default)
+		if err != nil {
+			// FIXME: Error?
+			glog.Warningf("Error registering with primary proxy %v retrieved from %v: %v", smap.ProxySI.DaemonID, si.DaemonID, err)
+			continue
+		}
+		smapLock.Lock()
+		p.smap = smap
+		smapLock.Unlock()
+		// Once registration has succeeded, stop the suspecting process
+		glog.Infof("Registered with new primary; not suspect\n")
+		p.becomeNonPrimaryProxy()
+		p.setPrimaryProxy(smap.ProxySI.DaemonID, "" /* primaryToRemove */, false /* prepare */)
+		return
+	}
+
+	// If this proxy was unable to discover the primary proxy through any of the hint proxies, stop the suspecting process
+	glog.Infof("Could not rejoin cluster; Remaining primary\n")
 }
 
 //===========================================================================================
@@ -1111,6 +1178,8 @@ func (p *proxyrunner) httpdaeputSmap(w http.ResponseWriter, r *http.Request, api
 	}
 	existentialQ := (newsmap.getProxy(p.si.DaemonID) != nil)
 	assert(existentialQ)
+	p.smap.lock()
+	defer p.smap.unlock()
 	p.smap, p.proxysi = newsmap, newsmap.ProxySI
 }
 
@@ -1325,8 +1394,8 @@ func (p *proxyrunner) httpclupost(w http.ResponseWriter, r *http.Request) {
 	} else {
 		p.registertarget(nsi, keepalive)
 	}
-	p.smap.Lock()
-	defer p.smap.Unlock()
+	p.smap.lock()
+	defer p.smap.unlock()
 	p.syncsmap(w, r)
 }
 
@@ -1354,7 +1423,7 @@ func (p *proxyrunner) shouldAddToSmap(nsi *daemonInfo, osi *daemonInfo, keepaliv
 }
 
 func (p *proxyrunner) registerproxy(nsi daemonInfo, keepalive bool) {
-	p.smap.Lock()
+	p.smap.lock()
 	defer p.smap.unlock()
 	pi := proxyInfo{
 		daemonInfo: nsi,
@@ -1409,7 +1478,7 @@ func (p *proxyrunner) httpcludel(w http.ResponseWriter, r *http.Request) {
 		sid = apitems[2]
 	}
 	p.smap.lock()
-	defer p.smap.Unlock()
+	defer p.smap.unlock()
 	if !proxy && p.smap.get(sid) == nil {
 		glog.Errorf("Unknown target %s", sid)
 		return
@@ -1548,6 +1617,8 @@ func (p *proxyrunner) synchronizeMaps(ntargets int, action string) {
 			continue
 		}
 		smv := p.smap.versionLocked()
+		// FIXME: If, after startup delay, no registrations have happened, is it still reasonable to skip this?
+		// It makes -ntargets less problematic with the Primary Proxy suspect process, but is unintuitive.
 		if smapversion != smv {
 			smapversion = smv
 			// if provided, use ntargets as a hint

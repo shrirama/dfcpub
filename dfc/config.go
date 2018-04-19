@@ -101,6 +101,9 @@ type timeoutconfig struct {
 	ProxyPing       time.Duration `json:"-"` //
 	VoteRequestStr  string        `json:"vote_request"`
 	VoteRequest     time.Duration `json:"-"` //
+	// FIXME: Does StartupSuspect belong here? If not, where?
+	StartupSuspectStr string        `json:"startup_suspect"`
+	StartupSuspect    time.Duration `json:"-"` //
 }
 
 type proxyconfig struct {
@@ -308,6 +311,9 @@ func validateconf() (err error) {
 	}
 	if ctx.config.Timeout.VoteRequest, err = time.ParseDuration(ctx.config.Timeout.VoteRequestStr); err != nil {
 		return fmt.Errorf("Bad Timeout vote_request format %s, err %v", ctx.config.Timeout.VoteRequestStr, err)
+	}
+	if ctx.config.Timeout.StartupSuspect, err = time.ParseDuration(ctx.config.Timeout.StartupSuspectStr); err != nil {
+		return fmt.Errorf("Bad Timeout startup_suspect format %s, err %v", ctx.config.Timeout.StartupSuspectStr, err)
 	}
 	return nil
 }

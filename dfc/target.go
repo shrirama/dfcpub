@@ -1757,7 +1757,9 @@ func (t *targetrunner) httpdaeputSmap(w http.ResponseWriter, r *http.Request, ap
 	}
 	assert(existentialQ)
 
+	t.smap.lock()
 	t.smap, t.proxysi = newsmap, newsmap.ProxySI
+	t.smap.unlock()
 	if apitems[0] == Rsyncsmap {
 		return
 	}

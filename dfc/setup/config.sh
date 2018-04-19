@@ -19,7 +19,8 @@
 		"default_long":		"30m",
 		"max_keepalive":	"4s",
 		"proxy_ping":		"100ms",
-		"vote_request":		"2s"
+		"vote_request":		"2s",
+		"startup_suspect":	"30s"
 	},
 	"proxyconfig": {
 		"primary": {
