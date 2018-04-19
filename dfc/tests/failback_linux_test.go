@@ -74,7 +74,7 @@ func failback_basic(t *testing.T) {
 }
 
 func failback_fast_restore(t *testing.T) {
-	// FIXME: won't the smap be out of sync if this happens (in terms of version number)?
+	// FIXME: Currently, map will be out of sync after running this test.
 
 	// Get Smap
 	smap := getClusterMap(httpclient, t)
@@ -122,8 +122,7 @@ func failback_multiple_failures(t *testing.T) {
 	}
 
 	secondProxyURL, secondProxyPort, secondProxyID := "", "", ""
-	// Select a "random" proxy
-	// FIXME: map iteration is apparently deterministic for small numbers of elements
+	// Select a random proxy
 	for pid, pxyinfo := range smap.Pmap {
 		if pid == nextProxyID || pid == primaryProxyID {
 			continue

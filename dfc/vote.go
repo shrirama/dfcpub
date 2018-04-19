@@ -416,8 +416,6 @@ func (p *proxyrunner) becomeNonPrimaryProxy() {
 	defer p.smap.unlock()
 	psi := p.smap.getProxy(p.si.DaemonID)
 	if psi != nil {
-		// FIXME: This shouldn't actually happen, but it does because of a shared config directory.
-		// Should this error be checked?
 		psi.Primary = false
 	}
 }

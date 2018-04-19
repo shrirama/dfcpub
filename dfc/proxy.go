@@ -81,6 +81,12 @@ func (p *proxyrunner) run() error {
 		}
 	}
 	p.lbmap.unlock()
+	if ctx.config.TestFSP.Instance > 0 {
+		instancedir := filepath.Join(ctx.config.Confdir, strconv.Itoa(ctx.config.TestFSP.Instance))
+		if err := CreateDir(instancedir); err != nil {
+			return fmt.Errorf("Failed to create instance confdir %q, err: %v", instancedir, err)
+		}
+	}
 
 	isproxy := os.Getenv("DFCPRIMARYPROXY")
 	// Register proxy if it isn't the Primary proxy
@@ -88,8 +94,11 @@ func (p *proxyrunner) run() error {
 		p.registerWithRetry(ctx.config.Proxy.Primary.URL, 0)
 		p.primary = false
 	} else {
-		// FIXME: This location is shared with all proxies/targets when running locally. See deploy.sh
 		smappathname := filepath.Join(p.confdir, smapname)
+		if ctx.config.TestFSP.Instance > 0 {
+			instancedir := filepath.Join(ctx.config.Confdir, strconv.Itoa(ctx.config.TestFSP.Instance))
+			smappathname = filepath.Join(instancedir, smapname)
+		}
 		p.hintsmap = &Smap{}
 		if err := localLoad(smappathname, p.hintsmap); err != nil && !os.IsNotExist(err) {
 			glog.Warningf("Failed to load existing hint smap: %v", err)
@@ -205,7 +214,7 @@ func (p *proxyrunner) registerWithRetry(url string, timeout time.Duration) error
 
 func (p *proxyrunner) suspectPrimaryStatus() {
 	// On startup, a proxy that begins as primary suspects itself for a configurable interval
-	<-time.After(ctx.config.Timeout.StartupSuspect)
+	<-time.After(ctx.config.Proxy.StartupSuspectTime)
 	glog.Infof("Suspect Timeout Ended\n")
 	// After that interval, if it has not recieved any registrations from any targets/proxies: it might not be the primary.
 	// If there is only 1 target/proxy, then that is this proxy.
@@ -223,38 +232,32 @@ func (p *proxyrunner) suspectPrimaryStatus() {
 		}
 		url := si.DirectURL + "/" + Rversion + "/" + Rcluster
 		method := http.MethodGet
-		// FIXME: Which timeout should be used? Should a generic "short" be added
-		// instead of using VoteRequest everywhere that needs a short timeout
 		r, err, _, _ := p.call(&si.daemonInfo, url, method, jsbytes, ctx.config.Timeout.VoteRequest)
 		if err != nil {
 			continue
 		}
 		smap := &Smap{}
 		if err = json.Unmarshal(r, smap); err != nil {
-			// FIXME: Error?
 			glog.Warningf("Error unmarshalling cluster map from %v: %v", si, smap)
 			continue
 		}
 
 		if smap.ProxySI.DaemonID == p.si.DaemonID {
-			// If this is the primary proxy, stop the suspecting process
-			glog.Infof("This is primary proxy; not suspect\n")
-			return
+			// If this is the primary proxy, all smaps found will include it as primary.
+			continue
 		}
 
 		err = p.registerWithRetry(smap.ProxySI.DirectURL, ctx.config.Timeout.Default)
 		if err != nil {
-			// FIXME: Error?
 			glog.Warningf("Error registering with primary proxy %v retrieved from %v: %v", smap.ProxySI.DaemonID, si.DaemonID, err)
 			continue
 		}
-		smapLock.Lock()
-		p.smap = smap
-		smapLock.Unlock()
 		// Once registration has succeeded, the suspecting process is over.
 		glog.Infof("Registered with new primary; not suspect\n")
 		p.becomeNonPrimaryProxy()
-		p.setPrimaryProxy(smap.ProxySI.DaemonID, "" /* primaryToRemove */, false /* prepare */)
+		smapLock.Lock()
+		p.proxysi = smap.ProxySI
+		smapLock.Unlock()
 		return
 	}
 
@@ -947,7 +950,7 @@ func (p *proxyrunner) deleteLocalBucket(w http.ResponseWriter, r *http.Request, 
 
 // synclbmap requires the caller to lock p.lbmap
 func (p *proxyrunner) synclbmap(w http.ResponseWriter, r *http.Request) {
-	lbpathname := p.confdir + "/" + lbname
+	lbpathname := filepath.Join(p.confdir, lbname)
 	if err := localSave(lbpathname, p.lbmap); err != nil {
 		s := fmt.Sprintf("Failed to store localbucket config %s, err: %v", lbpathname, err)
 		p.invalmsghdlr(w, r, s)
@@ -958,7 +961,11 @@ func (p *proxyrunner) synclbmap(w http.ResponseWriter, r *http.Request) {
 
 // syncsmap requires the caller to lock p.smap
 func (p *proxyrunner) syncsmap(w http.ResponseWriter, r *http.Request) {
-	smappathname := p.confdir + "/" + smapname
+	smappathname := filepath.Join(p.confdir, smapname)
+	if ctx.config.TestFSP.Instance > 0 {
+		instancedir := filepath.Join(ctx.config.Confdir, strconv.Itoa(ctx.config.TestFSP.Instance))
+		smappathname = filepath.Join(instancedir, smapname)
+	}
 	if err := localSave(smappathname, p.smap); err != nil {
 		s := fmt.Sprintf("Failed to store smap %s, err : %v", smappathname, err)
 		p.invalmsghdlr(w, r, s)
@@ -1164,6 +1171,11 @@ func (p *proxyrunner) httpdaeput(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *proxyrunner) httpdaeputSmap(w http.ResponseWriter, r *http.Request, apitems []string) {
+	if p.primary {
+		s := "Cannot distribute cluster map to Primary Proxy"
+		p.invalmsghdlr(w, r, s)
+		return
+	}
 	curversion := p.smap.Version
 	var newsmap *Smap
 	if p.readJSON(w, r, &newsmap) != nil {
@@ -1179,8 +1191,9 @@ func (p *proxyrunner) httpdaeputSmap(w http.ResponseWriter, r *http.Request, api
 	assert(existentialQ)
 
 	smapLock.Lock()
-	defer smapLock.Unlock()
-	p.smap, p.proxysi = newsmap, newsmap.ProxySI
+	p.smap = newsmap
+	smapLock.Unlock()
+	p.setPrimaryProxy(newsmap.ProxySI.DaemonID, "" /* primaryToRemove */, false /* prepare */)
 }
 
 func (p *proxyrunner) httpdaeputLBMap(w http.ResponseWriter, r *http.Request, apitems []string) {
@@ -1617,8 +1630,6 @@ func (p *proxyrunner) synchronizeMaps(ntargets int, action string) {
 			continue
 		}
 		smv := p.smap.versionLocked()
-		// FIXME: If, after startup delay, no registrations have happened, is it still reasonable to skip this?
-		// It makes -ntargets less problematic with the Primary Proxy suspect process, but is unintuitive.
 		if smapversion != smv {
 			smapversion = smv
 			// if provided, use ntargets as a hint
@@ -1628,6 +1639,9 @@ func (p *proxyrunner) synchronizeMaps(ntargets int, action string) {
 					glog.Infof("Reached the expected number %d (%d) of target registrations",
 						ntargets, ntargetsCur)
 					glog.Flush()
+				} else {
+					time.Sleep(delay)
+					continue
 				}
 			} else {
 				time.Sleep(delay)

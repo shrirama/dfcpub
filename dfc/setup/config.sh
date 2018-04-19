@@ -19,10 +19,10 @@
 		"default_long":		"30m",
 		"max_keepalive":	"4s",
 		"proxy_ping":		"100ms",
-		"vote_request":		"2s",
-		"startup_suspect":	"30s"
+		"vote_request":		"2s"
 	},
 	"proxyconfig": {
+		"startup_suspect_time":	"30s",
 		"primary": {
 			"id":		"${PROXYID}",
 			"url": 		"${PROXYURL}",
